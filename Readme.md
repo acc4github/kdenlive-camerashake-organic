@@ -27,8 +27,8 @@ It is a third-party modified version.
 - Use at your own risk.  
 
 ### Installation
-1. Download `camerashakeorganic.dll`
-2. Place it in your frei0r plugins folder (e.g., kdenlive-master\lib\frei0r-1)
+1. Download the build from the release. The zip file should have `camerashakeorganic.dll` and `camerashakeorganic.xml`.
+2. Place `camerashakeorganic.dll` in Kdenlive frei0r plugins folder (e.g., kdenlive-master\lib\frei0r-1)
 3. Place `camerashakeorganic.xml` in Kdenlive effects folder (e.g., kdenlive-master\bin\data\kdenlive\effects)
 4. Restart Kdenlive
 
