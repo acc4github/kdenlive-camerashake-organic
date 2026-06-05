@@ -11,7 +11,7 @@ This is a modified Frei0r plugin for Kdenlive that provides more organic and irr
 
 ### Modifications
 - Made by: acc4commissions
-- Assistance: Grok 4.3 (xAI)
+- AI Assistance: Grok 4.3 (xAI)
 - Changes:
   - Much more random/noisy movement on position, rotation, and blur
   - Blur stays mostly near zero with rare short spikes to emulate camera's focal point miss
