@@ -1,8 +1,8 @@
 <!DOCTYPE kpartgui>
 <effect tag="frei0r.camerashakeorganic" id="frei0r.camerashakeorganic" type="video">
     <name>Camera Shake Organic</name>
-    <description>Organic irregular camera shake with noise on movement, rotation and blur.</description>
-    <author>Modified for you</author>
+    <description>Organic irregular camera shake with noise on movement, rotation, and blur. Seed controls variation.</description>
+    <author>Modified by acc4commissions</author>
     
     <parameter type="animated" name="amplitude_x" max="500" min="0" default="5">
         <name>X Amplitude (px)</name>
@@ -10,8 +10,8 @@
     <parameter type="animated" name="amplitude_y" max="500" min="0" default="5">
         <name>Y Amplitude (px)</name>
     </parameter>
-    <parameter type="animated" name="rotation" max="180" min="0" default="5">
-        <name>Max Rotation</name>
+    <parameter type="animated" name="rotation" max="360" min="0" default="5">
+        <name>Rotation</name>
     </parameter>
     <parameter type="animated" name="zoom" max="300" min="50" default="100">
         <name>Zoom (%)</name>
@@ -20,6 +20,9 @@
         <name>Speed</name>
     </parameter>
     <parameter type="animated" name="blur" max="200" min="0" default="0">
-        <name>Blur</name>
+        <name>Blur (animated)</name>
+    </parameter>
+    <parameter type="animated" name="seed" max="1000" min="-1000" default="0">
+        <name>Seed</name>
     </parameter>
 </effect>
