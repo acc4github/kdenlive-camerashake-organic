@@ -1,7 +1,9 @@
 # Camera Shake Organic for Kdenlive
 This is a modified Frei0r plugin for Kdenlive that provides more organic and irregular camera shake with noise-based movement on position, rotation, and blur.
 
-<img width="497" height="382" alt="kdenlive_B0aNSOKR11" src="https://github.com/user-attachments/assets/17f67b4e-2731-4f99-827a-95bad95d17fd" />
+<p align="center">
+<img width="451" height="332" alt="kdenlive_CWSLxHwFPs" src="https://github.com/user-attachments/assets/5eb162cd-1a71-4ab8-a322-732ed7a69fe5" />
+</p>
 
 | Original Camera Shake Ultimate | Camera Shake Organic (Modified) |
 |--------------------------------|---------------------------------|
