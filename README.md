@@ -30,7 +30,7 @@ This is a modified Frei0r plugin for Kdenlive that provides more organic and irr
 
 ### Important Warning
 **This is NOT an official Kdenlive plugin.**  
-It is a third-party modified version.  
+This is a third-party modified version.  
 - It may stop working after Kdenlive or Frei0r updates.
 - Not tested on all systems or versions.  
 - Use at your own risk.  
