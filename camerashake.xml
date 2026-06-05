@@ -20,7 +20,7 @@
         <name>Speed</name>
     </parameter>
     <parameter type="animated" name="blur" max="300" min="0" default="0">
-        <name>Blur</name>
+        <name>Blur (animated)</name>
     </parameter>
     <parameter type="animated" name="seed" max="1000" min="-1000" default="0">
         <name>Seed / Phase</name>
