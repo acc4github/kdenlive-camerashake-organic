@@ -22,7 +22,7 @@ extern "C" {
         info->frei0r_version = FREI0R_MAJOR_VERSION;
         info->major_version = 2; info->minor_version = 0;
         info->num_params = 7;
-        info->explanation = "Organic camera shake with irregular noise and seedable phase.";
+        info->explanation = "Organic camera shake with irregular noise, fine micro-adjust, and bilinear sampling for smooth slow movement.";
     }
 
     void f0r_get_param_info(f0r_param_info_t* info, int param_index) {
@@ -70,7 +70,7 @@ extern "C" {
         else if (param_index == 6) *((double*)param) = inst->seed;
     }
 
-    /* Organic noise: layered sines with incommensurate frequencies → irregular but continuous motion */
+    /* Organic noise: layered sines with incommensurate frequencies */
     double organic_noise(double t) {
         double n = sin(t) * 0.5 +
                    sin(t * 2.31) * 0.25 +
@@ -80,24 +80,51 @@ extern "C" {
         return n;
     }
 
+    /* Bilinear sample at floating-point coordinates */
+    inline void bilinear_sample(const uint32_t* inframe, int w, int h, double fx, double fy, uint8_t* out) {
+        int x0 = (int)fx;
+        int y0 = (int)fy;
+        double dx = fx - x0;
+        double dy = fy - y0;
+
+        if (x0 < 0 || x0 >= w-1 || y0 < 0 || y0 >= h-1) {
+            // Out of bounds or edge → transparent black
+            out[0] = out[1] = out[2] = out[3] = 0;
+            return;
+        }
+
+        const uint8_t* p00 = (const uint8_t*)&inframe[y0 * w + x0];
+        const uint8_t* p10 = (const uint8_t*)&inframe[y0 * w + (x0 + 1)];
+        const uint8_t* p01 = (const uint8_t*)&inframe[(y0 + 1) * w + x0];
+        const uint8_t* p11 = (const uint8_t*)&inframe[(y0 + 1) * w + (x0 + 1)];
+
+        double w00 = (1 - dx) * (1 - dy);
+        double w10 = dx * (1 - dy);
+        double w01 = (1 - dx) * dy;
+        double w11 = dx * dy;
+
+        out[0] = (uint8_t)(p00[0]*w00 + p10[0]*w10 + p01[0]*w01 + p11[0]*w11);
+        out[1] = (uint8_t)(p00[1]*w00 + p10[1]*w10 + p01[1]*w01 + p11[1]*w11);
+        out[2] = (uint8_t)(p00[2]*w00 + p10[2]*w10 + p01[2]*w01 + p11[2]*w11);
+        out[3] = (uint8_t)(p00[3]*w00 + p10[3]*w10 + p01[3]*w01 + p11[3]*w11);
+    }
+
     void f0r_update(f0r_instance_t instance, double time, const uint32_t* inframe, uint32_t* outframe) {
         CameraShakeInstance* inst = (CameraShakeInstance*)instance;
         const int w = inst->width;
         const int h = inst->height;
 
-        /* Per-frame constants */
         const double speed_factor = inst->speed / 25.0;
-        const double t = time + inst->seed;                    // Seed shifts entire noise pattern
+        const double t = time + inst->seed;
 
-        const double shake_x = organic_noise(t * speed_factor * 1.0) * inst->amp_x;
-        const double shake_y = organic_noise(t * speed_factor * 1.13) * inst->amp_y;
+        const double shake_x = organic_noise(t * speed_factor * 1.0) * (inst->amp_x / 5.0);
+        const double shake_y = organic_noise(t * speed_factor * 1.13) * (inst->amp_y / 5.0);
 
-        const double max_angle = (inst->rotation / 100.0) * (M_PI / 4.0);
+        const double max_angle = (inst->rotation / 100.0) * (M_PI / 4.0) / 5.0;
         const double theta = organic_noise(t * speed_factor * 0.72) * max_angle;
         const double cos_t = cos(-theta);
         const double sin_t = sin(-theta);
 
-        /* Blur: squared noise keeps it near zero with rare spikes (as requested) */
         const double blur_noise = organic_noise(t * speed_factor * 0.55);
         const double blur_factor = blur_noise * blur_noise * 0.6;
         const int blur_radius = (int)((inst->blur / 5.0) * blur_factor);
@@ -108,60 +135,51 @@ extern "C" {
         const double cx = w / 2.0;
         const double cy = h / 2.0;
 
-        /* Main pixel loop */
         for (int y = 0; y < h; ++y) {
             for (int x = 0; x < w; ++x) {
-                /* Apply zoom -> rotate -> translate (camera-like transform) */
                 double dx = (x - cx) / scale;
                 double dy = (y - cy) / scale;
 
                 double rx = dx * cos_t - dy * sin_t;
                 double ry = dx * sin_t + dy * cos_t;
 
-                /* Source coordinates with shake */
-                int src_x = (int)(cx + rx + shake_x + 0.5);
-                int src_y = (int)(cy + ry + shake_y + 0.5);
+                /* Floating-point source coordinates for bilinear */
+                double src_x = cx + rx + shake_x;
+                double src_y = cy + ry + shake_y;
 
                 uint8_t* out_ptr = (uint8_t*)&outframe[y * w + x];
 
-                /* Out of bounds → transparent black */
-                if (src_x < 0 || src_x >= w || src_y < 0 || src_y >= h) {
-                    out_ptr[0] = 0;
-                    out_ptr[1] = 0;
-                    out_ptr[2] = 0;
-                    out_ptr[3] = 0;
-                    continue;
-                }
-
-                uint8_t* in_ptr = (uint8_t*)&inframe[src_y * w + src_x];
-
-                /* Fast path - no blur */
                 if (blur_radius <= 0) {
-                    out_ptr[0] = in_ptr[0];
-                    out_ptr[1] = in_ptr[1];
-                    out_ptr[2] = in_ptr[2];
-                    out_ptr[3] = in_ptr[3];
+                    bilinear_sample(inframe, w, h, src_x, src_y, out_ptr);
                 } else {
-                    /* Cross-shaped box blur (horizontal + vertical, step 2) - exact original behavior */
+                    /* For blur we still use integer base point + simple blur */
+                    int ix = (int)(src_x + 0.5);
+                    int iy = (int)(src_y + 0.5);
+
+                    if (ix < 0 || ix >= w || iy < 0 || iy >= h) {
+                        out_ptr[0] = out_ptr[1] = out_ptr[2] = out_ptr[3] = 0;
+                        continue;
+                    }
+
                     int sum_r = 0, sum_g = 0, sum_b = 0, sum_a = 0;
                     int samples = 0;
 
-                    /* Horizontal line */
+                    /* Horizontal */
                     for (int i = -blur_radius; i <= blur_radius; i += 2) {
-                        int sx = src_x + i;
+                        int sx = ix + i;
                         if (sx >= 0 && sx < w) {
-                            uint8_t* p = (uint8_t*)&inframe[src_y * w + sx];
+                            uint8_t* p = (uint8_t*)&inframe[iy * w + sx];
                             sum_r += p[0]; sum_g += p[1]; sum_b += p[2]; sum_a += p[3];
                             samples++;
                         }
                     }
 
-                    /* Vertical line (skip center to avoid double-counting) */
+                    /* Vertical */
                     for (int i = -blur_radius; i <= blur_radius; i += 2) {
                         if (i == 0) continue;
-                        int sy = src_y + i;
+                        int sy = iy + i;
                         if (sy >= 0 && sy < h) {
-                            uint8_t* p = (uint8_t*)&inframe[sy * w + src_x];
+                            uint8_t* p = (uint8_t*)&inframe[sy * w + ix];
                             sum_r += p[0]; sum_g += p[1]; sum_b += p[2]; sum_a += p[3];
                             samples++;
                         }
@@ -173,10 +191,7 @@ extern "C" {
                         out_ptr[2] = sum_b / samples;
                         out_ptr[3] = sum_a / samples;
                     } else {
-                        out_ptr[0] = in_ptr[0];
-                        out_ptr[1] = in_ptr[1];
-                        out_ptr[2] = in_ptr[2];
-                        out_ptr[3] = in_ptr[3];
+                        bilinear_sample(inframe, w, h, src_x, src_y, out_ptr);
                     }
                 }
             }
