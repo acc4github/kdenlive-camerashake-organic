@@ -3,6 +3,7 @@ Modified version of Camera Shake Ultimate
 
 This is a modified Frei0r plugin for Kdenlive that provides more organic and irregular camera shake with noise-based movement on position, rotation, and blur.
 
+---
 ### Original Plugin
 - Author: PakeMPC
 - Original repository: https://github.com/PakeMPC/kdenlive-camerashake
