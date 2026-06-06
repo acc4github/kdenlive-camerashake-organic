@@ -23,7 +23,7 @@ This is a modified Frei0r plugin for Kdenlive that provides more organic and irr
   - Animated blur to emulate the camera's focal point miss
   - Much smoother visuals with Bilinear Interpolation
   - Reduced overall intensity of the sliders for microadjustments
-  - Added 'Seed' parameter
+  - Added 'Seed' parameter to give variations between clips
   - Removed opacity parameter
   - Removed background color
   - Different plugin name to avoid conflict (`camerashakeorganic.dll`)
