@@ -16,7 +16,7 @@
     <parameter type="animated" name="zoom" max="400" min="50" default="100">
         <name>Zoom (%)</name>
     </parameter>
-    <parameter type="animated" name="speed" max="400" min="0" default="55">
+    <parameter type="animated" name="speed" max="1000" min="0" default="55">
         <name>Speed</name>
     </parameter>
     <parameter type="animated" name="blur" max="300" min="0" default="0">
