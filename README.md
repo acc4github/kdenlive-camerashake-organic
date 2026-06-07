@@ -19,9 +19,8 @@ This is a modified Frei0r plugin for Kdenlive that provides more organic and irr
 - Made by: acc4commissions
 - AI Assistance: Grok 4.3 (xAI)
 - Changes:
-  - Much more random/noisy movement on position, rotation, and blur
+  - Much more random/noisy movement
   - Added fluctuation to blur (controlled by the speed, 55% rate) to emulate the camera's focal point miss
-  - Added Speed Noise parameter to fluctuate the speed itself (mostly slows down the speed with occasional small speedups)
   - Much smoother visuals with Bilinear Interpolation
   - Reduced overall intensity of the sliders for microadjustments
   - Added 'Seed' parameter to give variations between clips
