@@ -32,10 +32,10 @@ This is a modified Frei0r plugin for Kdenlive that provides more organic and irr
 **This is NOT an official Kdenlive plugin.**  
 This is a modified third-party plugin.  
 - It may stop working after Kdenlive or Frei0r updates.
-- Not tested on all systems or versions.  
-- Use at your own risk.  
+- Not tested on all systems or versions.
+- Use at your own risk.
 
-### Installation
+### Installation (Windows)
 1. Download the build from the release. The zip file should have `camerashakeorganic.dll` and `camerashakeorganic.xml`.
 2. Place `camerashakeorganic.dll` in Kdenlive frei0r plugins folder (e.g., kdenlive-master\lib\frei0r-1)
 3. Place `camerashakeorganic.xml` in Kdenlive effects folder (e.g., kdenlive-master\bin\data\kdenlive\effects)
