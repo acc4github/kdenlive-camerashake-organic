@@ -1,7 +1,7 @@
 <!DOCTYPE kpartgui>
 <effect tag="frei0r.camerashakeorganic" id="frei0r.camerashakeorganic" type="video">
     <name>Camera Shake Organic</name>
-    <description>Organic irregular camera shake with noise on movement, rotation, blur and speed variation.</description>
+    <description>Organic irregular camera shake with noise on movement, rotation, blur, zoom and occasional speed slowdown.</description>
     <author>Modified by acc4commissions and Grok 4.3</author>
     
     <parameter type="animated" name="amplitude_x" max="1250" min="0" default="8">
@@ -19,8 +19,8 @@
     <parameter type="animated" name="speed" max="1000" min="0" default="55">
         <name>Speed</name>
     </parameter>
-    <parameter type="animated" name="speed_variation" max="100" min="0" default="5">
-        <name>Speed Variation</name>
+    <parameter type="animated" name="speed_noise" max="100" min="0" default="0">
+        <name>Speed Noise (%)</name>
     </parameter>
     <parameter type="animated" name="zoom" max="400" min="50" default="100">
         <name>Zoom (%)</name>
