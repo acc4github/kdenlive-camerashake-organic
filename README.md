@@ -42,7 +42,7 @@ This is a modified third-party plugin.
 4. Restart Kdenlive
 
 ### Building from Source
-See `CMakeLists.txt` and original repo instructions. I don't even know how I managed to build this shit.
+See `CMakeLists.txt` and original repo instructions.
 
 ### License
 This project is licensed under the same GNU General Public License v3.0 as the original.  
