@@ -20,10 +20,10 @@ This is a modified Frei0r plugin for Kdenlive that provides more organic and irr
 - AI Assistance: Grok 4.3 (xAI)
 - Changes:
   - Much more random/noisy movement overall
-  - Added fluctuation to blur (controlled by the speed, 55% rate) to emulate the camera's focal point miss
   - Much smoother visuals with Bilinear Interpolation
-  - Reduced overall intensity of the sliders for microadjustments
+  - Added fluctuation to blur (controlled by the speed, 55% rate) to emulate the camera's focal point miss
   - Added 'Seed' parameter to give variations between clips
+  - Reduced overall intensity of the sliders for microadjustments
   - Removed opacity parameter
   - Removed background color
   - Different plugin name to avoid conflict (`camerashakeorganic.dll`)
