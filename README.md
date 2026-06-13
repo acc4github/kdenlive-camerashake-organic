@@ -21,7 +21,7 @@ This is a modified Frei0r plugin for Kdenlive that provides more organic and irr
 - Changes:
   - Much more random/noisy movement overall
   - Much smoother visuals with Bilinear Interpolation
-  - Added fluctuation to blur (half the set speed) to emulate the camera's focal point miss
+  - Added fluctuation to blur to emulate the camera's focal point miss
   - Added 'Seed' parameter to give variations between clips
   - Added 'Edge Smoothing' option to smooth out the clip's edges to avoid jagged/pixelated lines.
   - Reduced overall intensity of the sliders for microadjustments
