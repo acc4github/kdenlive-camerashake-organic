@@ -255,22 +255,28 @@ extern "C" {
         return slowdown;
     }
 
-    // Animated blur amount based on noise — stronger shakes get more blur
-    // Hard-capped at 6px for performance
+    // Animated blur
     int compute_blur_radius(CameraShakeInstance* inst, double t) {
-        double blur_noise = organic_noise(t * 0.55);
-        double blur_factor = blur_noise * blur_noise * 0.5;
+        double blur_noise = organic_noise(t * 0.75); // fluctuation speed scaling
 
+        // Normalize from actual range ≈ -1.20 ~ +1.20 → 0.0 ~ 1.0
+        double normalized = (blur_noise + 1.20) / 2.40;
+
+        // Now apply squaring on the 0~1 range (more emphasis on peaks)
+        double blur_factor = normalized * normalized;
+
+        // Peak Compressor: compresses values above 0.5 in the new 0~1 scale
         const double threshold = 0.5;
         const double compression = 0.5;
         if (blur_factor > threshold) {
             blur_factor = threshold + (blur_factor - threshold) * compression;
         }
 
-        double adjusted = fmax(blur_factor - 0.05, 0.0);
+        double adjusted = fmax(blur_factor - 0.25, 0.0); // Pulling it to the negative to hit true 0
 
-        int radius = (int)((inst->params[3] / 5.0) * adjusted);
-        return std::min(radius, 6);
+        // Final output
+        int radius = (int)(inst->params[3] * adjusted);
+        return radius;  // final blur radius
     }
 
     /* =============================================

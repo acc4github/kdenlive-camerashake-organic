@@ -13,7 +13,7 @@
     <parameter type="animated" name="rotation" max="3600" min="0" default="2">
         <name>Max Rotation (x0.1°)</name>
     </parameter>
-    <parameter type="animated" name="blur" max="150" min="0" default="0">
+    <parameter type="animated" name="blur" max="100" min="0" default="0">
         <name>Blur (animated)</name>
     </parameter>
     <parameter type="animated" name="speed" max="1000" min="0" default="55">
@@ -25,7 +25,7 @@
     <parameter type="animated" name="zoom" max="400" min="50" default="100">
         <name>Zoom (%)</name>
     </parameter>
-    <parameter type="bool" name="edge_smoothing" default="1">
+    <parameter type="bool" name="edge_smoothing" default="0">
         <name>Edge Smoothing</name>
     </parameter>
     <parameter type="animated" name="seed" max="1000" min="-1000" default="0">
