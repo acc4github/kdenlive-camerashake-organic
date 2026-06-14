@@ -218,14 +218,14 @@ extern "C" {
         double phase_offset = 0.0;
         if (inst->params[5] > 0.001) {
             double slow_noise = organic_noise(time * speed_factor * 0.60 + inst->params[8] * 0.1); // variation speed, 60% of the main speed
-            double normalized = (slow_noise + 1.20) / 2.40 * 1.20 - 0.18; // around 17~18% peak (towards negative, manifests as strength)
+            double normalized = (slow_noise + 1.20) / 2.40 * 1.20 - 0.20; // around 20% peak (towards negative, manifests as strength)
             phase_offset = (inst->params[5] / 30) * normalized * normalized; // application intensity (lower is stronger, around 30 is neutral for now)
         }
         return phase_offset;
     }
 
     int compute_blur_radius(CameraShakeInstance* inst, double t) {
-        double blur_noise = organic_noise(t * 0.80); // variation speed, 80% of the main speed
+        double blur_noise = organic_noise(t); // variation speed, 100% of the main speed
         double normalized = (blur_noise + 1.20) / 2.40;
         double blur_factor = normalized * normalized;
 
