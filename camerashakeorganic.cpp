@@ -257,7 +257,7 @@ extern "C" {
 
     // Animated blur
     int compute_blur_radius(CameraShakeInstance* inst, double t) {
-        double blur_noise = organic_noise(t * 0.75); // fluctuation speed scaling
+        double blur_noise = organic_noise(t * 0.80); // fluctuation speed scaling
 
         // Normalize from actual range ≈ -1.20 ~ +1.20 → 0.0 ~ 1.0
         double normalized = (blur_noise + 1.20) / 2.40;
@@ -266,13 +266,13 @@ extern "C" {
         double blur_factor = normalized * normalized;
 
         // Peak Compressor: compresses values above 0.5 in the new 0~1 scale
-        const double threshold = 0.5;
-        const double compression = 0.5;
+        const double threshold = 0.25;
+        const double compression = 0.25;
         if (blur_factor > threshold) {
             blur_factor = threshold + (blur_factor - threshold) * compression;
         }
 
-        double adjusted = fmax(blur_factor - 0.25, 0.0); // Pulling it to the negative to hit true 0
+        double adjusted = fmax(blur_factor - 0.2, 0.0); // Pulling the range to the negative to hit true 0
 
         // Final output
         int radius = (int)(inst->params[3] * adjusted);
