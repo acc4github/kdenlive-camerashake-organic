@@ -4,11 +4,11 @@
     <description>Organic irregular camera shake with noise on movement, rotation, blur, zoom and occasional speed slowdown.</description>
     <author>Modified by acc4commissions and Grok 4.3</author>
 
-    <parameter type="animated" name="amplitude_x" max="1250" min="0" default="8">
-        <name>X Amplitude (x0.2px)</name>
+    <parameter type="animated" name="amplitude_x" max="1000" min="0" default="8">
+        <name>X Amplitude (px)</name>
     </parameter>
-    <parameter type="animated" name="amplitude_y" max="1250" min="0" default="8">
-        <name>Y Amplitude (x0.2px)</name>
+    <parameter type="animated" name="amplitude_y" max="1000" min="0" default="8">
+        <name>Y Amplitude (px)</name>
     </parameter>
     <parameter type="animated" name="rotation" max="3600" min="0" default="2">
         <name>Max Rotation (x0.1°)</name>

@@ -17,6 +17,7 @@ extern "C" {
                                     // 6: zoom, 7: edge_smoothing, 8: seed
 
         unsigned int width, height;
+        double scale_factor;        // resolution normalization
 
         // Tight bounding box of non-transparent content
         int content_min_x, content_min_y;
@@ -35,9 +36,9 @@ extern "C" {
         info->color_model = F0R_COLOR_MODEL_RGBA8888;
         info->frei0r_version = FREI0R_MAJOR_VERSION;
         info->major_version = 2;
-        info->minor_version = 0;
+        info->minor_version = 1;
         info->num_params = 9;
-        info->explanation = "Organic irregular camera shake with noise on movement, rotation, blur, zoom and occasional speed slowdown. Optional edge smoothing padding. Fully deterministic.";
+        info->explanation = "Organic irregular camera shake with noise on movement, rotation, blur, zoom and occasional speed slowdown. Optional edge smoothing padding. Resolution-independent. Fully deterministic.";
     }
 
     void f0r_get_param_info(f0r_param_info_t* info, int param_index) {
@@ -64,6 +65,10 @@ extern "C" {
 
         inst->width = width;
         inst->height = height;
+
+        const double ref_width = 1920.0;
+        inst->scale_factor = width / ref_width;
+
         inst->bounds_calculated = false;
 
         inst->content_min_x = 0;
@@ -183,6 +188,7 @@ extern "C" {
         int samples = 0;
         const int step = (blur_radius > 3) ? 2 : 1;
 
+        // Horizontal
         for (int i = -blur_radius; i <= blur_radius; i += step) {
             int sx = ix + i;
             if (sx >= min_x && sx <= max_x) {
@@ -192,11 +198,33 @@ extern "C" {
             }
         }
 
+        // Vertical
         for (int i = -blur_radius; i <= blur_radius; i += step) {
             if (i == 0) continue;
             int sy = iy + i;
             if (sy >= min_y && sy <= max_y) {
                 const uint8_t* p = (const uint8_t*)&buf[sy * bw + ix];
+                sum_r += p[0]; sum_g += p[1]; sum_b += p[2]; sum_a += p[3];
+                samples++;
+            }
+        }
+
+        // Diagonals
+        for (int i = -blur_radius; i <= blur_radius; i += step) {
+            if (i == 0) continue;
+            // Diagonal 1
+            int sx1 = ix + i;
+            int sy1 = iy + i;
+            if (sx1 >= min_x && sx1 <= max_x && sy1 >= min_y && sy1 <= max_y) {
+                const uint8_t* p = (const uint8_t*)&buf[sy1 * bw + sx1];
+                sum_r += p[0]; sum_g += p[1]; sum_b += p[2]; sum_a += p[3];
+                samples++;
+            }
+            // Diagonal 2
+            int sx2 = ix + i;
+            int sy2 = iy - i;
+            if (sx2 >= min_x && sx2 <= max_x && sy2 >= min_y && sy2 <= max_y) {
+                const uint8_t* p = (const uint8_t*)&buf[sy2 * bw + sx2];
                 sum_r += p[0]; sum_g += p[1]; sum_b += p[2]; sum_a += p[3];
                 samples++;
             }
@@ -213,19 +241,19 @@ extern "C" {
         }
     }
 
-    // Deterministic phase offset for speed slowdowns
     double compute_speed_slowdown_phase_offset(CameraShakeInstance* inst, double time, double speed_factor) {
         double phase_offset = 0.0;
         if (inst->params[5] > 0.001) {
-            double slow_noise = organic_noise(time * speed_factor * 0.60 + inst->params[8] * 0.1); // variation speed, 60% of the main speed
-            double normalized = (slow_noise + 1.20) / 2.40 * 1.20 - 0.20; // around 20% peak (towards negative, manifests as strength)
-            phase_offset = (inst->params[5] / 30) * normalized * normalized; // application intensity (lower is stronger, around 30 is neutral for now)
+            double slow_noise = organic_noise(time * speed_factor * 0.54 + inst->params[8] * 0.1);
+            // New scaling: 50% to 125% speed fluctuation
+            double normalized = (slow_noise + 1.0) / 2.0 * 0.50 + 0.75;  // maps to ~0.75 ... 1.25
+            phase_offset = (inst->params[5] / 30.0) * (1.0 - normalized); // positive = slowdown
         }
         return phase_offset;
     }
 
     int compute_blur_radius(CameraShakeInstance* inst, double t) {
-        double blur_noise = organic_noise(t); // variation speed, 100% of the main speed
+        double blur_noise = organic_noise(t * 0.58);
         double normalized = (blur_noise + 1.20) / 2.40;
         double blur_factor = normalized * normalized;
 
@@ -236,7 +264,7 @@ extern "C" {
         }
 
         double adjusted = fmax(blur_factor - 0.2, 0.0);
-        return (int)(inst->params[3] * adjusted);
+        return (int)(inst->params[3] * adjusted * inst->scale_factor * 4);
     }
 
     /* =============================================
@@ -249,7 +277,7 @@ extern "C" {
         const int h = inst->height;
 
         bool enable_padding = (inst->params[7] > 0.5);
-        const int padding = enable_padding ? 2 : 0;
+        const int padding = enable_padding ? (int)(4.0 * inst->scale_factor + 0.5) : 0;
 
         const int pw = w + padding * 2;
         const int ph = h + padding * 2;
@@ -281,11 +309,9 @@ extern "C" {
         double phase_offset = compute_speed_slowdown_phase_offset(inst, time, speed_factor);
         double final_t = base_t + phase_offset;
 
-        // Translation shake (uses final_t)
-        const double shake_x = organic_noise(final_t) * (inst->params[0] / 5.0);
-        const double shake_y = organic_noise(final_t * 1.13) * (inst->params[1] / 5.0);
+        const double shake_x = organic_noise(final_t) * inst->params[0] * inst->scale_factor;
+        const double shake_y = organic_noise(final_t * 1.13) * inst->params[1] * inst->scale_factor;
 
-        // Rotation
         const double max_angle = inst->params[2] * (M_PI / 1800.0);
         const double theta = organic_noise(final_t * 0.72) * max_angle;
         const double cos_t = cos(-theta);
@@ -293,7 +319,6 @@ extern "C" {
 
         int blur_radius = compute_blur_radius(inst, final_t);
 
-        // Zoom
         double scale = inst->params[6] / 100.0;
         if (scale < 0.001) scale = 0.001;
         const double inv_scale = 1.0 / scale;
@@ -314,7 +339,6 @@ extern "C" {
         int max_x = std::min(source_w - 1, inst->content_max_x + padding);
         int max_y = std::min(source_h - 1, inst->content_max_y + padding);
 
-        /* === MAIN RENDER LOOP === */
         for (int y = 0; y < h; ++y) {
             const double base_x = b * (double)y + tx;
             const double base_y = d * (double)y + ty;
