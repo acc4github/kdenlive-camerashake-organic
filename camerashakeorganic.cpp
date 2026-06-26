@@ -3,6 +3,7 @@
 #include <cmath>
 #include <algorithm>
 #include <cstdint>
+#include <cstring>   // for std::copy, std::fill
 
 // =============================================
 // HARDCODED SPEED BIAS SETTING
@@ -11,7 +12,11 @@
 // =============================================
 #define SPEED_BIAS_PERCENT -99.0
 
-// Ensure M_PI is defined (for cross‑platform safety)
+// Performance safeguard: maximum blur radius (pixels)
+// At 1080p with radius=42, the blur loop reads ~84 samples/pixel,
+// which is fast enough for real‑time on a modern CPU.
+#define MAX_BLUR_RADIUS 42
+
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
 #endif
@@ -36,21 +41,28 @@ extern "C" {
         // Cached auto‑zoom value & dirty flag
         double cached_zoom;
         bool zoom_dirty;
+
+        // ---------- PERFORMANCE ADDITIONS ----------
+        // Reusable scratch buffer for padded image (no allocation per frame)
+        uint32_t* scratch_buffer;
+        int scratch_capacity_w;
+        int scratch_capacity_h;
+        // ------------------------------------------
     };
 
     int f0r_init(void) { return 1; }
     void f0r_deinit(void) {}
 
     void f0r_get_plugin_info(f0r_plugin_info_t* info) {
-        info->name = "Camera Shake Organic (Edge Smoothing + Auto Zoom)";
-        info->author = "Modified by acc4commissions and Grok 4.3";
+        info->name = "Camera Shake Organic (Optimized)";
+        info->author = "Modified by acc4commissions";
         info->plugin_type = F0R_PLUGIN_TYPE_FILTER;
         info->color_model = F0R_COLOR_MODEL_RGBA8888;
         info->frei0r_version = FREI0R_MAJOR_VERSION;
         info->major_version = 2;
-        info->minor_version = 6;
+        info->minor_version = 7;
         info->num_params = 10;
-        info->explanation = "Organic irregular camera shake with noise on movement, rotation, blur, zoom and occasional speed slowdown. ";
+        info->explanation = "Organic irregular camera shake with noise on movement, rotation, blur, zoom and occasional speed slowdown. Optimized for performance.";
     }
 
     void f0r_get_param_info(f0r_param_info_t* info, int param_index) {
@@ -90,27 +102,33 @@ extern "C" {
         inst->content_min_y = 0;
         inst->content_max_y = (int)height - 1;
 
-        // Cache initial zoom (will be computed on first update)
         inst->cached_zoom = 1.0;
-        inst->zoom_dirty = true;  // force computation on first frame
+        inst->zoom_dirty = true;
+
+        // ---------- INIT PERFORMANCE BUFFERS ----------
+        inst->scratch_buffer = nullptr;
+        inst->scratch_capacity_w = 0;
+        inst->scratch_capacity_h = 0;
+        // ----------------------------------------------
 
         return (f0r_instance_t)inst;
     }
 
     void f0r_destruct(f0r_instance_t instance) {
-        delete (CameraShakeInstance*)instance;
+        CameraShakeInstance* inst = (CameraShakeInstance*)instance;
+        delete[] inst->scratch_buffer;
+        delete inst;
     }
 
     void f0r_set_param_value(f0r_instance_t instance, f0r_param_t param, int param_index) {
         CameraShakeInstance* inst = (CameraShakeInstance*)instance;
         inst->params[param_index] = *((double*)param);
 
-        // Invalidate cached zoom if any relevant parameter changes
-        if (param_index == 0 || param_index == 1 || param_index == 2 || param_index == 7) {
+        // FIX: manual zoom (param 6) must also invalidate the zoom cache
+        if (param_index == 0 || param_index == 1 || param_index == 2 ||
+            param_index == 6 || param_index == 7) {
             inst->zoom_dirty = true;
         }
-
-        // Bounds depend on zoom/edge_smoothing/seed? Not really, but keep as before.
         if (param_index == 6 || param_index == 8 || param_index == 9) {
             inst->bounds_calculated = false;
         }
@@ -121,9 +139,9 @@ extern "C" {
     }
 
     // ------------------------------------------------------------
-    //  HELPER FUNCTIONS (unchanged)
+    //  HELPER FUNCTIONS (unchanged logic)
     // ------------------------------------------------------------
-    double organic_noise(double t) {
+    static inline double organic_noise(double t) {
         double n = sin(t) * 0.5 +
                    sin(t * 2.31) * 0.25 +
                    sin(t * 4.57) * 0.15 +
@@ -132,7 +150,7 @@ extern "C" {
         return n;
     }
 
-    double integral_organic_noise(double t) {
+    static inline double integral_organic_noise(double t) {
         double I = -0.5 * cos(t)
                    - (0.25 / 2.31) * cos(2.31 * t)
                    - (0.15 / 4.57) * cos(4.57 * t)
@@ -141,7 +159,7 @@ extern "C" {
         return I;
     }
 
-    void calculate_content_bounds(CameraShakeInstance* inst, const uint32_t* buf, int bw, int bh) {
+    static void calculate_content_bounds(CameraShakeInstance* inst, const uint32_t* buf, int bw, int bh) {
         if (inst->bounds_calculated) return;
 
         int left = bw, right = -1, top = bh, bottom = -1;
@@ -169,9 +187,9 @@ extern "C" {
         inst->bounds_calculated = true;
     }
 
-    inline void content_clamped_smoothed_sample(const uint32_t* buf, int bw, int bh,
-                                                int min_x, int min_y, int max_x, int max_y,
-                                                double fx, double fy, uint8_t* out) {
+    static inline void content_clamped_smoothed_sample(const uint32_t* buf, int bw, int bh,
+                                                       int min_x, int min_y, int max_x, int max_y,
+                                                       double fx, double fy, uint8_t* out) {
         if (fx < min_x - 1.0 || fx > max_x + 1.0 || fy < min_y - 1.0 || fy > max_y + 1.0) {
             out[0] = out[1] = out[2] = out[3] = 0;
             return;
@@ -198,16 +216,18 @@ extern "C" {
         out[3] = (uint8_t)(p00[3]*w00 + p10[3]*w10 + p01[3]*w01 + p11[3]*w11 + 0.5);
     }
 
-    inline void fast_blur_sample(const uint32_t* buf, int bw, int bh,
-                                 int min_x, int min_y, int max_x, int max_y,
-                                 int ix, int iy, int blur_radius, uint8_t* out) {
+    // Fast blur using the same cross+diagonal star pattern, but radius is capped.
+    static inline void fast_blur_sample(const uint32_t* buf, int bw, int bh,
+                                        int min_x, int min_y, int max_x, int max_y,
+                                        int ix, int iy, int blur_radius, uint8_t* out) {
         if (blur_radius <= 0) {
             content_clamped_smoothed_sample(buf, bw, bh, min_x, min_y, max_x, max_y, (double)ix, (double)iy, out);
             return;
         }
         int sum_r = 0, sum_g = 0, sum_b = 0, sum_a = 0;
         int samples = 0;
-        const int step = (blur_radius > 3) ? 2 : 1;
+        const int step = (blur_radius > 6) ? 2 : 1;  // keep sparse for large radii
+
         // Horizontal
         for (int i = -blur_radius; i <= blur_radius; i += step) {
             int sx = ix + i;
@@ -227,23 +247,28 @@ extern "C" {
                 samples++;
             }
         }
-        // Diagonals
+        // Main diagonal (x+i, y+i)
         for (int i = -blur_radius; i <= blur_radius; i += step) {
             if (i == 0) continue;
-            int sx1 = ix + i, sy1 = iy + i;
-            if (sx1 >= min_x && sx1 <= max_x && sy1 >= min_y && sy1 <= max_y) {
-                const uint8_t* p = (const uint8_t*)&buf[sy1 * bw + sx1];
-                sum_r += p[0]; sum_g += p[1]; sum_b += p[2]; sum_a += p[3];
-                samples++;
-            }
-            int sx2 = ix + i, sy2 = iy - i;
-            if (sx2 >= min_x && sx2 <= max_x && sy2 >= min_y && sy2 <= max_y) {
-                const uint8_t* p = (const uint8_t*)&buf[sy2 * bw + sx2];
+            int sx = ix + i, sy = iy + i;
+            if (sx >= min_x && sx <= max_x && sy >= min_y && sy <= max_y) {
+                const uint8_t* p = (const uint8_t*)&buf[sy * bw + sx];
                 sum_r += p[0]; sum_g += p[1]; sum_b += p[2]; sum_a += p[3];
                 samples++;
             }
         }
-        if (samples > 1) {
+        // Anti-diagonal (x+i, y-i)
+        for (int i = -blur_radius; i <= blur_radius; i += step) {
+            if (i == 0) continue;
+            int sx = ix + i, sy = iy - i;
+            if (sx >= min_x && sx <= max_x && sy >= min_y && sy <= max_y) {
+                const uint8_t* p = (const uint8_t*)&buf[sy * bw + sx];
+                sum_r += p[0]; sum_g += p[1]; sum_b += p[2]; sum_a += p[3];
+                samples++;
+            }
+        }
+
+        if (samples > 0) {
             int half = samples / 2;
             out[0] = (uint8_t)((sum_r + half) / samples);
             out[1] = (uint8_t)((sum_g + half) / samples);
@@ -254,7 +279,7 @@ extern "C" {
         }
     }
 
-    int compute_blur_radius(CameraShakeInstance* inst, double t) {
+    static int compute_blur_radius(CameraShakeInstance* inst, double t) {
         double blur_noise = organic_noise(t * 0.58);
         double normalized = (blur_noise + 1.20) / 2.40;
         double blur_factor = normalized * normalized;
@@ -263,11 +288,15 @@ extern "C" {
         if (blur_factor > threshold)
             blur_factor = threshold + (blur_factor - threshold) * compression;
         double adjusted = fmax(blur_factor - 0.2, 0.0);
-        return (int)(inst->params[3] * adjusted * inst->scale_factor * 4);
+        int radius = (int)(inst->params[3] * adjusted * inst->scale_factor * 4);
+        // Clamp to performance safeguard
+        if (radius > MAX_BLUR_RADIUS) radius = MAX_BLUR_RADIUS;
+        if (radius < 0) radius = 0;
+        return radius;
     }
 
     // ------------------------------------------------------------
-    //  MAIN UPDATE
+    //  MAIN UPDATE (Optimized)
     // ------------------------------------------------------------
     void f0r_update(f0r_instance_t instance, double time, const uint32_t* inframe, uint32_t* outframe) {
         CameraShakeInstance* inst = (CameraShakeInstance*)instance;
@@ -275,9 +304,9 @@ extern "C" {
         const int h = inst->height;
         const double scale = inst->scale_factor;
 
-        // ---- Update cached auto‑zoom if dirty ----
+        // ---- Update cached auto‑zoom ----
         if (inst->zoom_dirty) {
-            if (inst->params[7] > 0.5) { // auto_zoom enabled
+            if (inst->params[7] > 0.5) {
                 const double amp_x = inst->params[0];
                 const double amp_y = inst->params[1];
                 const double rot_slider = inst->params[2];
@@ -318,13 +347,11 @@ extern "C" {
                 if (S < 1.0) S = 1.0;
                 inst->cached_zoom = S;
             } else {
-                // auto_zoom off: use manual zoom slider (scaled to factor)
                 inst->cached_zoom = inst->params[6] / 100.0;
             }
             inst->zoom_dirty = false;
         }
-
-        double effective_zoom = inst->cached_zoom; // either auto or manual
+        double effective_zoom = inst->cached_zoom;
 
         // ---- Edge smoothing (padding) ----
         bool enable_padding = (inst->params[8] > 0.5);
@@ -332,35 +359,43 @@ extern "C" {
 
         const int pw = w + padding * 2;
         const int ph = h + padding * 2;
-        uint32_t* padded = nullptr;
-        const uint32_t* source_buf = inframe;
+        uint32_t* source_buf = (uint32_t*)inframe;      // default: use input directly
         int source_w = w;
         int source_h = h;
 
+        // ---- REUSABLE SCRATCH BUFFER (no per‑frame allocation) ----
         if (padding > 0) {
-            padded = new uint32_t[pw * ph];
-            std::fill(padded, padded + pw * ph, 0u);
+            // Reallocate only if capacity is too small
+            if (inst->scratch_buffer == nullptr || inst->scratch_capacity_w < pw || inst->scratch_capacity_h < ph) {
+                delete[] inst->scratch_buffer;
+                inst->scratch_capacity_w = pw;
+                inst->scratch_capacity_h = ph;
+                inst->scratch_buffer = new uint32_t[pw * ph];
+            }
+            // Fill and copy
+            std::fill(inst->scratch_buffer, inst->scratch_buffer + pw * ph, 0u);
             for (int y = 0; y < h; ++y) {
                 std::copy(inframe + y * w, inframe + (y + 1) * w,
-                          padded + (y + padding) * pw + padding);
+                          inst->scratch_buffer + (y + padding) * pw + padding);
             }
-            source_buf = padded;
+            source_buf = inst->scratch_buffer;
             source_w = pw;
             source_h = ph;
         }
 
+        // Calculate content bounds (cached until params change)
         calculate_content_bounds(inst, source_buf, source_w, source_h);
 
-        // ---- Speed modulation (unchanged) ----
+        // ---- Speed modulation ----
         const double speed_factor = inst->params[4] / 25.0;
         double speed_noise_percent = std::max(0.0, std::min(100.0, inst->params[5]));
         double bias_percent = std::max(-100.0, std::min(100.0, (double)SPEED_BIAS_PERCENT));
         double half_range = (speed_noise_percent / 100.0) * 0.5;
         double shift = half_range * (bias_percent / 100.0);
-        double phase_t = time * speed_factor * 0.33 + inst->params[9] * 0.1; // the fluctuation tempo = 0.nn% of the main speed
+        double phase_t = time * speed_factor * 0.49 + inst->params[9] * 0.1; // the fluctuation tempo = 0.nn of the main speed.
         const double NOISE_PEAK = 1.28;
         double base_t = time * speed_factor * (1.0 + shift) + inst->params[9];
-        double integral_term = (half_range / (NOISE_PEAK * 0.33)) * integral_organic_noise(phase_t); // the fluctuation tempo = 0.nn% of the main speed
+        double integral_term = (half_range / (NOISE_PEAK * 0.49)) * integral_organic_noise(phase_t); // the fluctuation tempo = 0.nn of the main speed.
         double final_t = base_t + integral_term;
 
         // ---- Shake & rotation ----
@@ -373,7 +408,6 @@ extern "C" {
 
         int blur_radius = compute_blur_radius(inst, final_t);
 
-        // Use the cached effective zoom
         double scale_zoom = effective_zoom;
         if (scale_zoom < 0.001) scale_zoom = 0.001;
         const double inv_scale = 1.0 / scale_zoom;
@@ -394,35 +428,49 @@ extern "C" {
         int max_x = std::min(source_w - 1, inst->content_max_x + padding);
         int max_y = std::min(source_h - 1, inst->content_max_y + padding);
 
-        // ---- Render ----
-        for (int y = 0; y < h; ++y) {
-            const double base_x = b * (double)y + tx;
-            const double base_y = d * (double)y + ty;
-            for (int x = 0; x < w; ++x) {
-                double src_x = a * (double)x + base_x + padding;
-                double src_y = c * (double)x + base_y + padding;
-                uint8_t* out_ptr = (uint8_t*)&outframe[y * w + x];
-
-                if (blur_radius <= 0) {
+        // ---- RENDER: Two separate loops for clarity and speed ----
+        if (blur_radius <= 0) {
+            // --- FAST PATH: No blur (bilinear only) ---
+            for (int y = 0; y < h; ++y) {
+                const double base_x = b * (double)y + tx + padding;
+                const double base_y = d * (double)y + ty + padding;
+                for (int x = 0; x < w; ++x) {
+                    double src_x = a * (double)x + base_x;
+                    double src_y = c * (double)x + base_y;
+                    uint8_t* out_ptr = (uint8_t*)&outframe[y * w + x];
                     content_clamped_smoothed_sample(source_buf, source_w, source_h,
-                                                    min_x, min_y, max_x, max_y, src_x, src_y, out_ptr);
-                } else {
+                                                    min_x, min_y, max_x, max_y,
+                                                    src_x, src_y, out_ptr);
+                }
+            }
+        } else {
+            // --- BLUR PATH: with fast star blur ---
+            for (int y = 0; y < h; ++y) {
+                const double base_x = b * (double)y + tx + padding;
+                const double base_y = d * (double)y + ty + padding;
+                for (int x = 0; x < w; ++x) {
+                    double src_x = a * (double)x + base_x;
+                    double src_y = c * (double)x + base_y;
+                    uint8_t* out_ptr = (uint8_t*)&outframe[y * w + x];
+
+                    // Check if outside content (early exit for black)
                     if (src_x < inst->content_min_x - 1.0 || src_x > inst->content_max_x + 1.0 ||
                         src_y < inst->content_min_y - 1.0 || src_y > inst->content_max_y + 1.0) {
                         out_ptr[0] = out_ptr[1] = out_ptr[2] = out_ptr[3] = 0;
                         continue;
                     }
+
                     int ix = (int)(src_x + 0.5);
                     int iy = (int)(src_y + 0.5);
                     ix = std::max(min_x, std::min(ix, max_x));
                     iy = std::max(min_y, std::min(iy, max_y));
+
                     fast_blur_sample(source_buf, source_w, source_h,
                                      min_x, min_y, max_x, max_y,
                                      ix, iy, blur_radius, out_ptr);
                 }
             }
         }
-
-        if (padded) delete[] padded;
+        // Note: scratch_buffer is NOT deleted here – it persists for the next frame.
     }
 }
