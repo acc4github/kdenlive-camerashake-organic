@@ -20,10 +20,13 @@
         <name>Speed</name>
     </parameter>
     <parameter type="animated" name="speed_noise" max="100" min="0" default="0">
-        <name>Speed Noise (%)</name>
+        <name>Speed Slowdowns (%)</name>
     </parameter>
     <parameter type="animated" name="zoom" max="400" min="50" default="100">
         <name>Zoom (%)</name>
+    </parameter>
+    <parameter type="bool" name="auto_zoom" default="0">
+        <name>Auto Zoom (for full clips)</name>
     </parameter>
     <parameter type="bool" name="edge_smoothing" default="0">
         <name>Edge Smoothing</name>
