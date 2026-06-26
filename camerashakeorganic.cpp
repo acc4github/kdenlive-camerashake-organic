@@ -62,7 +62,7 @@ extern "C" {
         info->major_version = 2;
         info->minor_version = 7;
         info->num_params = 10;
-        info->explanation = "Organic irregular camera shake with noise on movement, rotation, blur, zoom and occasional speed slowdown. Optimized for performance.";
+        info->explanation = "Organic irregular camera shake with noise on movement, rotation, blur, zoom and occasional speed slowdown.";
     }
 
     void f0r_get_param_info(f0r_param_info_t* info, int param_index) {
